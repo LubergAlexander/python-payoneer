@@ -3,11 +3,11 @@
 
 import json
 import requests
-from endpoints import mapping_table
+from endpoints import mapping_table, payload
 from lxml.html import fromstring
 import re
 
-__version__ = "0.0.1"
+__version__ = "0.0.2"
 
 # TODO: Implement auth errors class
 
@@ -22,19 +22,6 @@ class Payoneer:
     login_url = api_url + '/Login/Login.aspx'
 
     # TODO: make it customisable through endpoint params
-    payload = {
-        'currPage': 1,
-        'searchString': '',
-        'searchOption': '',
-        'searchParamFormat': '',
-        'searchParam': '',
-        'sortParam': '',
-        'sortDirection': 'asc',
-        'opaque': '',
-        'startDate': '01/01/2008',
-        'endDate': '11/10/2012',
-        'PayoneerInternalId': ''
-    }
 
     headers = {
         'Content-Type': 'application/json'
@@ -51,6 +38,7 @@ class Payoneer:
         """
 
         self.mapping_table = mapping_table
+        self.payload = payload
 
         self.session = requests.session()
         response = self.session.get(self.login_url)
@@ -83,19 +71,27 @@ class Payoneer:
 
         """
 
-        def call(self, *args, **kwargs):
+        def call(self, api_call=api_call, *args, **kwargs):
             # if args:
             #     msg = "%s() got unexpected positional arguments: %s"
             #     raise TypeError(msg % (api_call, args))
+
             api_map = self.mapping_table[api_call]
             method = api_map['method']
             path = api_map['path']
 #           status = api_map['status']
             valid_params = api_map.get('valid_params', {})
+            prerequisite = api_map.get('prerequisite', False)
+            # TODO: Ugly, need to have a fresh instance of payload for every call, not per instance.
+            # also we should keep PayoneerInternal key 1 per instance.
+
+            self.payload["currPage"] = 1
+            if prerequisite:
+                call(self, api_call='pre_%s' % api_call)
 
             # Assign default values to keyword arguments.
-            for key, value in api_map.get('defaults', {}).iteritems():
-                kwargs.setdefault(key, value)
+            # for key, value in api_map.get('defaults', {}).iteritems():
+            #     kwargs.setdefault(key, value)
 
             # Substitute mustache placeholders with data from keywords
             url = re.sub(
@@ -107,15 +103,17 @@ class Payoneer:
 
             # Validate remaining kwargs against valid_params and add
             # params url encoded to url variable.
-            msg = "%s() got an unexpected keyword argument '%s'"
             params = self.payload
 
-            for kw, value in kwargs.iteritems():
-                param = valid_params.get(kw, None)
-                if not param:
-                    raise TypeError(msg % (api_call, kw))
+            if valid_params:
+                for key, value in valid_params.iteritems():
+                    params[key] = value
 
-                params[param] = value
+            for kw, value in kwargs.iteritems():
+                # TODO: Add verification for valid params
+                params[key] = value
+
+            # TODO: refactor to use recursion
 
             response = self.session.request(
                 method=method,
@@ -123,7 +121,9 @@ class Payoneer:
                 data=json.dumps(params),
                 headers=self.headers
             )
+
             result = {}
+            # Request all pages of data
             if response.json:
                 json_data = json.loads(response.json["d"])
                 pages = json_data["numberOfPages"]
@@ -144,6 +144,5 @@ class Payoneer:
         # Missing method is also not defined in our mapping table
         if api_call not in self.mapping_table:
             raise AttributeError('Method "%s" Does Not Exist' % api_call)
-
         # Execute dynamic method and pass in keyword args as data to API call
         return call.__get__(self)

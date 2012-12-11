@@ -4,8 +4,7 @@
 import json
 import requests
 from lxml.html import fromstring
-
-__version__ = "0.0.3"
+__version__ = "0.0.4"
 
 
 class Payoneer:
@@ -103,12 +102,22 @@ class Payoneer:
 
         return data
 
-    def _request_data(self, url, page):
+    def _request_data(self, url, details_function, page):
         payload = self.default_payload.copy()
         payload.update(self.payoneer_internal_payload)
         payload['currPage'] = page
         data = self._do_json_request(url, payload=payload)
-        return self._json_handler(data)
+
+        items_unpacked = json.loads(data["d"])
+        items = items_unpacked["Data"]
+        detailed_data = []
+        for index, item in enumerate(items):
+            details = details_function(row=index, page=page)
+            item.update(details)
+            detailed_data.append(item)
+        # replace Data section to the one with all details
+        items_unpacked["Data"] = detailed_data
+        return items_unpacked
 
     def _request_details(self, url, query_params, output_format, row, page):
         query_params['rowindex'] = row
@@ -124,15 +133,15 @@ class Payoneer:
 
     def list_loads(self, page=1):
         self._pre_loads_page()
-        return self._request_data(self.loads_json_url, page)
+        return self._request_data(self.loads_json_url, self._get_load_details, page)
 
     def list_transactions(self, page=1):
         self._pre_transactions_page()
-        return self._request_data(self.transactions_json_url, page)
+        return self._request_data(self.transactions_json_url, self._get_transaction_details, page)
 
     def list_preauth_transactions(self, page=1):
         self._pre_transactions_page()
-        return self._request_data(self.preauth_transactions_json_url, page)
+        return self._request_data(self.preauth_transactions_json_url, self._get_preauth_transaction_details, page)
 
     def list_all_transactions(self):
         self._pre_transactions_page()
@@ -145,9 +154,6 @@ class Payoneer:
         return self._pagination(self.list_preauth_transactions)
 
     def _get_transaction_details(self, row=0, page=1):
-        self._pre_transactions_page()
-        self.list_transactions(page=page)
-
         query_params = {
             'transactionDetails': 'true',
             'AuditId': ''
@@ -166,9 +172,6 @@ class Payoneer:
         return self._request_details(self.transaction_details_html_url, query_params, output_format, row, page)
 
     def _get_load_details(self, row=0, page=1):
-        self._pre_loads_page()
-        self.list_loads(page=page)
-
         query_params = {
             'loadlistDetails': 'true',
             'PaymentId': ''
@@ -184,9 +187,6 @@ class Payoneer:
         return self._request_details(self.load_details_html_url, query_params, output_format, row, page)
 
     def _get_preauth_transaction_details(self, row=0, page=1):
-        self._pre_transactions_page()
-        self.list_preauth_transactions(page=page)
-
         query_params = {
             'transactionDetails': 'true',
             'AuditId': ''
@@ -201,9 +201,6 @@ class Payoneer:
             'USDAmount': 'span#lblUSDAmount'
         }
         return self._request_details(self.preauth_transaction_details_html_url, query_params, output_format, row, page)
-
-    def _json_handler(self, data):
-        return json.loads(data["d"])
 
     def _html_handler(self, format, content):
         # Go through the format dictionary of value : css_class and return a dict of corresponding values

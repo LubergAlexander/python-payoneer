@@ -3,29 +3,66 @@
 
 import json
 import requests
-from endpoints import mapping_table, payload
 from lxml.html import fromstring
-import re
 
-__version__ = "0.0.2"
-
-# TODO: Implement auth errors class
+__version__ = "0.0.3"
 
 
 class Payoneer:
     """ Python Payoneer wrapper"""
 
-    # default url
     api_url = 'https://myaccount.payoneer.com'
 
-    # TODO: probably better to login through endpoints too
     login_url = api_url + '/Login/Login.aspx'
+    transactions_url = api_url + '/MainPage/Transactions.aspx'
+    loads_url = api_url + '/MainPage/LoadList.aspx'
+    transactions_json_url = api_url + '/MainPage/Transactions.aspx/GetTranscationsDataJSON'
+    preauth_transactions_json_url = api_url + '/MainPage/Transactions.aspx/GetPreauthTranscationsDataJSON'
+    loads_json_url = api_url + '/MainPage/LoadList.aspx/GetLoadListDataJSON'
+    transaction_details_html_url = api_url + '/MainPage/TransactionDetailsTemplate.aspx'
+    preauth_transaction_details_html_url = api_url + '/MainPage/TransactionDetailsPreAuthTemplate.aspx'
+    load_details_html_url = api_url + '/MainPage/LoadListDetailsTemplate.aspx'
 
-    # TODO: make it customisable through endpoint params
+    default_payload = {
+        'currPage': 1,
+        'searchString': '',
+        'searchOption': '',
+        'searchParamFormat': '',
+        'searchParam': '',
+        'sortParam': '',
+        'sortDirection': '',
+        'opaque': '',
+        'startDate': '01/01/1900',
+        'endDate': '01/01/2300',
+    }
+
+    payoneer_internal_payload = {
+        'PayoneerInternalId': ''
+    }
 
     headers = {
         'Content-Type': 'application/json'
     }
+
+    last_pre_request = None
+
+    def _do_json_request(self, url, method="POST", payload=None):
+        response = self.session.request(
+                method=method,
+                url=url,
+                data=json.dumps(payload),
+                headers=self.headers
+            )
+        return response.json
+
+    def _do_html_request(self, url, method="GET", query_params=None):
+        response = self.session.request(
+                method=method,
+                url=url,
+                params=query_params,
+                headers=self.headers
+            )
+        return response.content
 
     def __init__(self, username=None, password=None):
         """
@@ -37,112 +74,152 @@ class Payoneer:
         password - Specific to your Payoneer account or your account's
         """
 
-        self.mapping_table = mapping_table
-        self.payload = payload
-
         self.session = requests.session()
         response = self.session.get(self.login_url)
         dom = fromstring(response.content)
 
         data = dict((x.name, x.value) for x in dom.cssselect('#form1 input'))
-        # TODO: get btLogin from DOM instead of hardcoding
         data['__EVENTTARGET'] = 'btLogin'
         data['txtUserName'] = username
         data['txtPassword'] = password
-        self.payload["PayoneerInternalId"] = data['payoneer-internal-id']
+        self.payoneer_internal_payload["PayoneerInternalId"] = data['payoneer-internal-id']
 
         # TODO: Check response for authentication errors
         response = self.session.post(self.login_url, data=data)
 
-    def __getattr__(self, api_call):
-        """
-        Instead of writing out each API endpoint as a method here or
-        binding the API endpoints at instance runttime, we can simply
-        use an elegant Python technique to construct method execution on-
-        demand. We simply provide a mapping table between REST API calls
-        and function names (with necessary parameters to replace
-        embedded keywords on GET or json data on POST/PUT requests).
+    def _prerequisite(self, url):
+        if self.last_pre_request is not url:
+            self._do_html_request(url)
+            self.last_pre_request = url
 
-        __getattr__() is used as callback method implemented so that
-        when an object tries to call a method which is not defined here,
-        it looks to find a relationship in the the mapping table.  The
-        table provides the structure of the API call and parameters passed
-        in the method will populate missing data.
+    def _pagination(self, data_function):
+        json_data = data_function()
+        numberOfPages = json_data["numberOfPages"]
+        data = json_data["Data"]
 
-        """
+        for page in range(2, numberOfPages + 1):
+            json_data = data_function(page=page)
+            data.extend(json_data["Data"])
 
-        def call(self, api_call=api_call, *args, **kwargs):
-            # if args:
-            #     msg = "%s() got unexpected positional arguments: %s"
-            #     raise TypeError(msg % (api_call, args))
+        return data
 
-            api_map = self.mapping_table[api_call]
-            method = api_map['method']
-            path = api_map['path']
-#           status = api_map['status']
-            valid_params = api_map.get('valid_params', {})
-            prerequisite = api_map.get('prerequisite', False)
-            # TODO: Ugly, need to have a fresh instance of payload for every call, not per instance.
-            # also we should keep PayoneerInternal key 1 per instance.
+    def _request_data(self, url, page):
+        payload = self.default_payload.copy()
+        payload.update(self.payoneer_internal_payload)
+        payload['currPage'] = page
+        data = self._do_json_request(url, payload=payload)
+        return self._json_handler(data)
 
-            self.payload["currPage"] = 1
-            if prerequisite:
-                call(self, api_call='pre_%s' % api_call)
+    def _pre_transactions_page(self):
+        return self._prerequisite(self.transactions_url)
 
-            # Assign default values to keyword arguments.
-            # for key, value in api_map.get('defaults', {}).iteritems():
-            #     kwargs.setdefault(key, value)
+    def _pre_loads_page(self):
+        return self._prerequisite(self.loads_url)
 
-            # Substitute mustache placeholders with data from keywords
-            url = re.sub(
-                '\{\{(?P<m>[a-zA-Z_]+)\}\}',
-                # Optional pagination parameters will default to blank
-                lambda m: "%s" % kwargs.pop(m.group(1), ''),
-                self.api_url + path
-            )
+    def list_loads(self, page=1):
+        self._pre_loads_page()
+        return self._request_data(self.loads_json_url, page)
 
-            # Validate remaining kwargs against valid_params and add
-            # params url encoded to url variable.
-            params = self.payload
+    def list_transactions(self, page=1):
+        self._pre_transactions_page()
+        return self._request_data(self.transactions_json_url, page)
 
-            if valid_params:
-                for key, value in valid_params.iteritems():
-                    params[key] = value
+    def list_preauth_transactions(self, page=1):
+        self._pre_transactions_page()
+        return self._request_data(self.preauth_transactions_json_url, page)
 
-            for kw, value in kwargs.iteritems():
-                # TODO: Add verification for valid params
-                params[key] = value
+    def list_all_transactions(self):
+        self._pre_transactions_page()
+        return self._pagination(self.list_transactions)
 
-            # TODO: refactor to use recursion
+    def list_all_loads(self):
+        return self._pagination(self.list_loads)
 
-            response = self.session.request(
-                method=method,
-                url=url,
-                data=json.dumps(params),
-                headers=self.headers
-            )
+    def list_all_preauth_transactions(self):
+        return self._pagination(self.list_preauth_transactions)
 
-            result = {}
-            # Request all pages of data
-            if response.json:
-                json_data = json.loads(response.json["d"])
-                pages = json_data["numberOfPages"]
-                result = json_data["Data"]
-                if pages > 1:
-                    for page in range(2, pages):
-                        self.payload["currPage"] = page
-                        response = self.session.request(
-                            method=method,
-                            url=url,
-                            data=json.dumps(params),
-                            headers=self.headers
-                        )
-                        result.extend(json.loads(response.json["d"])["Data"])
+    def _get_transaction_details(self, row=0, page=1):
+        self._pre_transactions_page()
+        self.list_transactions(page=page)
 
-            return result
+        query_params = {
+            'transactionDetails': 'true',
+            'AuditId': '',
+            'rowindex': row,
+            'currPage': page
+        }
+        data = self._do_html_request(self.transaction_details_html_url, query_params=query_params)
 
-        # Missing method is also not defined in our mapping table
-        if api_call not in self.mapping_table:
-            raise AttributeError('Method "%s" Does Not Exist' % api_call)
-        # Execute dynamic method and pass in keyword args as data to API call
-        return call.__get__(self)
+        output_format = {
+            'Date': 'span#lblDate',
+            'AuthNumber': 'span#lblAuthNumber',
+            'TerminalID': 'span#lblTerminalId',
+            'TerminalAddress': 'span#lblTerminalAddress',
+            'TerminalCity': 'span#lblTerminalCity',
+            'TerminalStateAndCountry': 'span#lblTerminalStateAndCountry',
+            'LocalCurrencyAmount': 'span#lblLocalCurrencyAmount',
+            'USDAmount': 'span#lblUSDAmount',
+            'FeeAmount': 'span#lblFee'
+        }
+        return self._html_handler(output_format, data)
+
+    def _get_load_details(self, payment_id=0, row=0, page=1):
+        self._pre_loads_page()
+        self.list_loads(page=page)
+
+        query_params = {
+            'loadlistDetails': 'true',
+            'PaymentId': '',
+            'rowindex': row,
+            'currPage': page
+        }
+
+        data = self._do_html_request(self.load_details_html_url, query_params=query_params)
+
+        output_format = {
+            'PaymentId': 'span#lblPaymentID',
+            'Date': 'span#lblPaymentDate',
+            'LoadStatus': 'span#lblLoadStatus',
+            'AmountToLoad': 'span#lblAmountToLoad',
+            'LoaderDetails': 'span#lblLoaderDetails',
+            'PayeeId': 'span#lblPayeeId'
+        }
+        return self._html_handler(output_format, data)
+
+    def _get_preauth_transaction_details(self, audit_id=0, row=0, page=1):
+        self._pre_transactions_page()
+        self.list_preauth_transactions(page=page)
+
+        query_params = {
+            'transactionDetails': 'true',
+            'AuditId': audit_id,
+            'rowindex': row,
+            'currPage': page
+        }
+        data = self._do_html_request(self.preauth_transaction_details_html_url, query_params=query_params)
+
+        output_format = {
+            'Date': 'span#lblDate',
+            'TerminalID': 'span#lblTerminalId',
+            'TerminalType': 'span#lblTerminalType',
+            'TerminalAddress': 'span#lblTerminalAddress',
+            'Description': 'span#lblDescription',
+            'LocalCurrencyAmount': 'span#lblLocalCurrencyAmount',
+            'USDAmount': 'span#lblUSDAmount',
+        }
+        return self._html_handler(output_format, data)
+
+    def _json_handler(self, data):
+        return json.loads(data["d"])
+
+    def _html_handler(self, format, content):
+        # Go through the format dictionary of value : css_class and return a dict of corresponding values
+        result = dict.fromkeys(format)
+        dom = fromstring(content)
+
+        for key, value in format.iteritems():
+            selector = dom.cssselect(value)
+            if selector:
+                result[key] = selector[0].text
+
+        return result

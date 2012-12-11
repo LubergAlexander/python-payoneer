@@ -110,6 +110,12 @@ class Payoneer:
         data = self._do_json_request(url, payload=payload)
         return self._json_handler(data)
 
+    def _request_details(self, url, query_params, output_format, row, page):
+        query_params['rowindex'] = row
+        query_params['currPage'] = page
+        data = self._do_html_request(url, query_params=query_params)
+        return self._html_handler(output_format, data)
+
     def _pre_transactions_page(self):
         return self._prerequisite(self.transactions_url)
 
@@ -144,12 +150,8 @@ class Payoneer:
 
         query_params = {
             'transactionDetails': 'true',
-            'AuditId': '',
-            'rowindex': row,
-            'currPage': page
+            'AuditId': ''
         }
-        data = self._do_html_request(self.transaction_details_html_url, query_params=query_params)
-
         output_format = {
             'Date': 'span#lblDate',
             'AuthNumber': 'span#lblAuthNumber',
@@ -161,21 +163,16 @@ class Payoneer:
             'USDAmount': 'span#lblUSDAmount',
             'FeeAmount': 'span#lblFee'
         }
-        return self._html_handler(output_format, data)
+        return self._request_details(self.transaction_details_html_url, query_params, output_format, row, page)
 
-    def _get_load_details(self, payment_id=0, row=0, page=1):
+    def _get_load_details(self, row=0, page=1):
         self._pre_loads_page()
         self.list_loads(page=page)
 
         query_params = {
             'loadlistDetails': 'true',
-            'PaymentId': '',
-            'rowindex': row,
-            'currPage': page
+            'PaymentId': ''
         }
-
-        data = self._do_html_request(self.load_details_html_url, query_params=query_params)
-
         output_format = {
             'PaymentId': 'span#lblPaymentID',
             'Date': 'span#lblPaymentDate',
@@ -184,20 +181,16 @@ class Payoneer:
             'LoaderDetails': 'span#lblLoaderDetails',
             'PayeeId': 'span#lblPayeeId'
         }
-        return self._html_handler(output_format, data)
+        return self._request_details(self.load_details_html_url, query_params, output_format, row, page)
 
-    def _get_preauth_transaction_details(self, audit_id=0, row=0, page=1):
+    def _get_preauth_transaction_details(self, row=0, page=1):
         self._pre_transactions_page()
         self.list_preauth_transactions(page=page)
 
         query_params = {
             'transactionDetails': 'true',
-            'AuditId': audit_id,
-            'rowindex': row,
-            'currPage': page
+            'AuditId': ''
         }
-        data = self._do_html_request(self.preauth_transaction_details_html_url, query_params=query_params)
-
         output_format = {
             'Date': 'span#lblDate',
             'TerminalID': 'span#lblTerminalId',
@@ -205,9 +198,9 @@ class Payoneer:
             'TerminalAddress': 'span#lblTerminalAddress',
             'Description': 'span#lblDescription',
             'LocalCurrencyAmount': 'span#lblLocalCurrencyAmount',
-            'USDAmount': 'span#lblUSDAmount',
+            'USDAmount': 'span#lblUSDAmount'
         }
-        return self._html_handler(output_format, data)
+        return self._request_details(self.preauth_transaction_details_html_url, query_params, output_format, row, page)
 
     def _json_handler(self, data):
         return json.loads(data["d"])

@@ -159,15 +159,15 @@ class Payoneer:
             'AuditId': ''
         }
         output_format = {
-            'Date': 'span#lblDate',
-            'AuthNumber': 'span#lblAuthNumber',
-            'TerminalID': 'span#lblTerminalId',
-            'TerminalAddress': 'span#lblTerminalAddress',
-            'TerminalCity': 'span#lblTerminalCity',
-            'TerminalStateAndCountry': 'span#lblTerminalStateAndCountry',
-            'LocalCurrencyAmount': 'span#lblLocalCurrencyAmount',
-            'USDAmount': 'span#lblUSDAmount',
-            'FeeAmount': 'span#lblFee'
+            u'Date': 'span#lblDate',
+            u'AuthNumber': 'span#lblAuthNumber',
+            u'TerminalID': 'span#lblTerminalId',
+            u'TerminalAddress': 'span#lblTerminalAddress',
+            u'TerminalCity': 'span#lblTerminalCity',
+            u'TerminalStateAndCountry': 'span#lblTerminalStateAndCountry',
+            u'LocalCurrencyAmount': 'span#lblLocalCurrencyAmount',
+            u'USDAmount': 'span#lblUSDAmount',
+            u'FeeAmount': 'span#lblFee'
         }
         return self._request_details(self.transaction_details_html_url, query_params, output_format, row, page)
 
@@ -177,12 +177,12 @@ class Payoneer:
             'PaymentId': ''
         }
         output_format = {
-            'PaymentId': 'span#lblPaymentID',
-            'Date': 'span#lblPaymentDate',
-            'LoadStatus': 'span#lblLoadStatus',
-            'AmountToLoad': 'span#lblAmountToLoad',
-            'LoaderDetails': 'span#lblLoaderDetails',
-            'PayeeId': 'span#lblPayeeId'
+            u'PaymentId': 'span#lblPaymentID',
+            u'Date': 'span#lblPaymentDate',
+            u'LoadStatus': 'span#lblLoadStatus',
+            u'AmountToLoad': 'span#lblAmountToLoad',
+            u'LoaderDetails': 'span#lblLoaderDetails',
+            u'PayeeId': 'span#lblPayeeId'
         }
         return self._request_details(self.load_details_html_url, query_params, output_format, row, page)
 
@@ -192,13 +192,13 @@ class Payoneer:
             'AuditId': ''
         }
         output_format = {
-            'Date': 'span#lblDate',
-            'TerminalID': 'span#lblTerminalId',
-            'TerminalType': 'span#lblTerminalType',
-            'TerminalAddress': 'span#lblTerminalAddress',
-            'Description': 'span#lblDescription',
-            'LocalCurrencyAmount': 'span#lblLocalCurrencyAmount',
-            'USDAmount': 'span#lblUSDAmount'
+            u'Date': 'span#lblDate',
+            u'TerminalID': 'span#lblTerminalId',
+            u'TerminalType': 'span#lblTerminalType',
+            u'TerminalAddress': 'span#lblTerminalAddress',
+            u'Description': 'span#lblDescription',
+            u'LocalCurrencyAmount': 'span#lblLocalCurrencyAmount',
+            u'USDAmount': 'span#lblUSDAmount'
         }
         return self._request_details(self.preauth_transaction_details_html_url, query_params, output_format, row, page)
 
